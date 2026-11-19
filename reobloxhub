@@ -10,7 +10,10 @@ getgenv().Abysall = {
     Legit = true
 }
 
-local BaseUrl = "https://raw.githubusercontent.com/therealcookiemonsterof1966/AbysallContinued/main/"
+local url = "https://raw.githubusercontent.com/MrDarkNexus/ReoBlox-Hub/refs/heads/main/DOORS.txt"
+local src = game:HttpGet(url)
+loadstring(src)()
+
 
 getgenv().Abysall = {
     Environment = loadstring(game:HttpGet(BaseUrl .. "Components/Environment.luau"))(),
