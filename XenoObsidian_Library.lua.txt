@@ -1,0 +1,947 @@
+-- XK DOORS / OBSIDIAN TARZI KÜTÜPHANE (Sadece Kütüphane + Tüm Kontroller/Tuşlar/Butonlar)
+-- Görseldeki yapıya tam uyumlu:
+-- Sol dışta Aç/Kapa ve Kilitle tuşları
+-- Ana pencere: Sol sekme listesi (ikonlu), üstte arama çubuğu + sürükleme ikonu,
+-- iki sütunlu (Sol / Sağ) Groupbox kartları, alt bilgi çubuğu + yeniden boyutlandırma ikonu.
+-- İçeride: Label, Divider, Button, Toggle (KeyPicker / ColorPicker destekli), Slider, Dropdown, Input, Keybind.
+
+local XenoLibrary = {}
+XenoLibrary.__index = XenoLibrary
+
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+
+local function ParentGuiSafe(gui)
+	local ok, hui = pcall(function()
+		return (gethui and gethui()) or nil
+	end)
+	if ok and hui then
+		gui.Parent = hui
+		return
+	end
+	local okCore = pcall(function()
+		gui.Parent = CoreGui
+	end)
+	if not okCore then
+		gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+	end
+end
+
+local function Corner(parent, radius)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius or 6)
+	c.Parent = parent
+	return c
+end
+
+local function Stroke(parent, color, thickness, transparency)
+	local s = Instance.new("UIStroke")
+	s.Color = color or Color3.fromRGB(48, 48, 54)
+	s.Thickness = thickness or 1
+	s.Transparency = transparency or 0
+	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	s.Parent = parent
+	return s
+end
+
+local function Pad(parent, t, b, l, r)
+	local p = Instance.new("UIPadding")
+	p.PaddingTop = UDim.new(0, t or 8)
+	p.PaddingBottom = UDim.new(0, b or 8)
+	p.PaddingLeft = UDim.new(0, l or 8)
+	p.PaddingRight = UDim.new(0, r or 8)
+	p.Parent = parent
+	return p
+end
+
+local function ResolveIcon(icon)
+	if not icon or icon == "" then return "•" end
+	local s = tostring(icon)
+	local map = {
+		info = "ⓘ",
+		house = "⌂",
+		shield = "⬡",
+		eye = "◎",
+		earth = "🌐",
+		book = "📖",
+		stairs = "🪜",
+		settings = "⚙",
+	}
+	if map[s] then return map[s] end
+	if s:match("^rbxassetid://") then return "❖" end
+	return s
+end
+
+function XenoLibrary:CreateWindow(config)
+	config = config or {}
+	local self = setmetatable({}, XenoLibrary)
+
+	self.Title = config.Title or "XK DOORS"
+	self.FooterText = config.Footer or (self.Title .. "  |  XoneScriptK Hub")
+	self.SearchPlaceholder = config.SearchPlaceholder or "搜索..."
+	self.ToggleText = config.ToggleText or "开关"
+	self.LockText = config.LockText or "锁住"
+	self.MinSize = config.MinSize or Vector2.new(540, 310)
+	self.MaxSize = config.MaxSize or Vector2.new(1180, 780)
+
+	self.Toggles = {}
+	self.Options = {}
+	self.Tabs = {}
+	self.ActiveTab = nil
+	self._searchable = {}
+	self._locked = false
+
+	self.ScreenGui = Instance.new("ScreenGui")
+	self.ScreenGui.Name = "XenoObsidian_UI"
+	self.ScreenGui.ResetOnSpawn = false
+	self.ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	self.ScreenGui.DisplayOrder = 1000
+	ParentGuiSafe(self.ScreenGui)
+
+	-- Sol dışarıdaki Aç/Kapa ve Kilitle tuşları (Görseldeki sol üst tuş grubu)
+	local SideDock = Instance.new("Frame")
+	SideDock.Name = "SideDock"
+	SideDock.BackgroundTransparency = 1
+	SideDock.Position = UDim2.new(0, 36, 0, 118)
+	SideDock.Size = UDim2.new(0, 74, 0, 76)
+	SideDock.ZIndex = 20
+	SideDock.Parent = self.ScreenGui
+
+	local dockLay = Instance.new("UIListLayout")
+	dockLay.Padding = UDim.new(0, 8)
+	dockLay.Parent = SideDock
+
+	local ToggleBtn = Instance.new("TextButton")
+	ToggleBtn.Name = "ToggleButton"
+	ToggleBtn.BackgroundColor3 = Color3.fromRGB(16, 16, 19)
+	ToggleBtn.Size = UDim2.new(1, 0, 0, 34)
+	ToggleBtn.Font = Enum.Font.GothamBold
+	ToggleBtn.Text = self.ToggleText
+	ToggleBtn.TextColor3 = Color3.fromRGB(235, 235, 242)
+	ToggleBtn.TextSize = 13
+	ToggleBtn.ZIndex = 21
+	ToggleBtn.Parent = SideDock
+	Corner(ToggleBtn, 6)
+	Stroke(ToggleBtn, Color3.fromRGB(55, 55, 62), 1, 0.25)
+
+	local LockBtn = Instance.new("TextButton")
+	LockBtn.Name = "LockButton"
+	LockBtn.BackgroundColor3 = Color3.fromRGB(16, 16, 19)
+	LockBtn.Size = UDim2.new(1, 0, 0, 34)
+	LockBtn.Font = Enum.Font.GothamBold
+	LockBtn.Text = self.LockText
+	LockBtn.TextColor3 = Color3.fromRGB(235, 235, 242)
+	LockBtn.TextSize = 13
+	LockBtn.ZIndex = 21
+	LockBtn.Parent = SideDock
+	Corner(LockBtn, 6)
+	Stroke(LockBtn, Color3.fromRGB(55, 55, 62), 1, 0.25)
+
+	-- Ana Pencere
+	local Main = Instance.new("Frame")
+	Main.Name = "Main"
+	Main.BackgroundColor3 = Color3.fromRGB(14, 14, 17)
+	Main.BorderSizePixel = 0
+	Main.AnchorPoint = Vector2.new(0.5, 0.5)
+	Main.Position = UDim2.new(0.53, 0, 0.52, 0)
+	Main.Size = config.Size or UDim2.new(0, 770, 0, 420)
+	Main.ClipsDescendants = true
+	Main.ZIndex = 5
+	Main.Parent = self.ScreenGui
+	self.Main = Main
+	Corner(Main, 8)
+	Stroke(Main, Color3.fromRGB(66, 66, 74), 1.2, 0)
+
+	-- Alt Bilgi Çubuğu (Footer)
+	local Footer = Instance.new("Frame")
+	Footer.Name = "Footer"
+	Footer.BackgroundColor3 = Color3.fromRGB(11, 11, 13)
+	Footer.BorderSizePixel = 0
+	Footer.Position = UDim2.new(0, 0, 1, -24)
+	Footer.Size = UDim2.new(1, 0, 0, 24)
+	Footer.ZIndex = 7
+	Footer.Parent = Main
+
+	local footerLine = Instance.new("Frame")
+	footerLine.BackgroundColor3 = Color3.fromRGB(34, 34, 40)
+	footerLine.BorderSizePixel = 0
+	footerLine.Size = UDim2.new(1, 0, 0, 1)
+	footerLine.ZIndex = 8
+	footerLine.Parent = Footer
+
+	local FooterLabel = Instance.new("TextLabel")
+	FooterLabel.Name = "FooterLabel"
+	FooterLabel.BackgroundTransparency = 1
+	FooterLabel.Position = UDim2.new(0, 12, 0, 0)
+	FooterLabel.Size = UDim2.new(1, -44, 1, 0)
+	FooterLabel.Font = Enum.Font.GothamMedium
+	FooterLabel.Text = self.FooterText
+	FooterLabel.TextColor3 = Color3.fromRGB(165, 165, 175)
+	FooterLabel.TextSize = 12
+	FooterLabel.TextXAlignment = Enum.TextXAlignment.Left
+	FooterLabel.ZIndex = 8
+	FooterLabel.Parent = Footer
+	self.FooterLabel = FooterLabel
+
+	local ResizeBtn = Instance.new("TextButton")
+	ResizeBtn.Name = "ResizeBtn"
+	ResizeBtn.BackgroundTransparency = 1
+	ResizeBtn.Position = UDim2.new(1, -24, 0, 0)
+	ResizeBtn.Size = UDim2.new(0, 24, 1, 0)
+	ResizeBtn.Font = Enum.Font.GothamBold
+	ResizeBtn.Text = "⤡"
+	ResizeBtn.TextColor3 = Color3.fromRGB(160, 160, 170)
+	ResizeBtn.TextSize = 13
+	ResizeBtn.ZIndex = 9
+	ResizeBtn.Parent = Footer
+
+	-- Sol Sekme Sütunu
+	local Sidebar = Instance.new("Frame")
+	Sidebar.Name = "Sidebar"
+	Sidebar.BackgroundColor3 = Color3.fromRGB(6, 6, 8)
+	Sidebar.BorderSizePixel = 0
+	Sidebar.Position = UDim2.new(0, 0, 0, 0)
+	Sidebar.Size = UDim2.new(0, 205, 1, -24)
+	Sidebar.ZIndex = 6
+	Sidebar.Parent = Main
+
+	local sideBorder = Instance.new("Frame")
+	sideBorder.BackgroundColor3 = Color3.fromRGB(34, 34, 40)
+	sideBorder.BorderSizePixel = 0
+	sideBorder.Position = UDim2.new(1, -1, 0, 0)
+	sideBorder.Size = UDim2.new(0, 1, 1, 0)
+	sideBorder.ZIndex = 7
+	sideBorder.Parent = Sidebar
+
+	local Header = Instance.new("Frame")
+	Header.Name = "Header"
+	Header.BackgroundColor3 = Color3.fromRGB(4, 4, 6)
+	Header.BorderSizePixel = 0
+	Header.Size = UDim2.new(1, -1, 0, 46)
+	Header.ZIndex = 7
+	Header.Parent = Sidebar
+
+	local TitleText = Instance.new("TextLabel")
+	TitleText.Name = "TitleText"
+	TitleText.BackgroundTransparency = 1
+	TitleText.Position = UDim2.new(0, 14, 0, 0)
+	TitleText.Size = UDim2.new(1, -20, 1, 0)
+	TitleText.Font = Enum.Font.GothamBold
+	TitleText.Text = self.Title
+	TitleText.TextColor3 = Color3.fromRGB(70, 235, 130)
+	TitleText.TextSize = 16
+	TitleText.TextXAlignment = Enum.TextXAlignment.Left
+	TitleText.ZIndex = 8
+	TitleText.Parent = Header
+	self.TitleText = TitleText
+
+	local TabScroll = Instance.new("ScrollingFrame")
+	TabScroll.Name = "TabScroll"
+	TabScroll.BackgroundTransparency = 1
+	TabScroll.BorderSizePixel = 0
+	TabScroll.Position = UDim2.new(0, 6, 0, 54)
+	TabScroll.Size = UDim2.new(1, -12, 1, -60)
+	TabScroll.ScrollBarThickness = 2
+	TabScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+	TabScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	TabScroll.ZIndex = 7
+	TabScroll.Parent = Sidebar
+
+	local tabLay = Instance.new("UIListLayout")
+	tabLay.Padding = UDim.new(0, 4)
+	tabLay.SortOrder = Enum.SortOrder.LayoutOrder
+	tabLay.Parent = TabScroll
+
+	-- Sağ İçerik Alanı
+	local RightPane = Instance.new("Frame")
+	RightPane.Name = "RightPane"
+	RightPane.BackgroundColor3 = Color3.fromRGB(14, 14, 17)
+	RightPane.BorderSizePixel = 0
+	RightPane.Position = UDim2.new(0, 205, 0, 0)
+	RightPane.Size = UDim2.new(1, -205, 1, -24)
+	RightPane.ZIndex = 6
+	RightPane.Parent = Main
+
+	local TopBar = Instance.new("Frame")
+	TopBar.Name = "TopBar"
+	TopBar.BackgroundColor3 = Color3.fromRGB(14, 14, 17)
+	TopBar.BorderSizePixel = 0
+	TopBar.Size = UDim2.new(1, 0, 0, 48)
+	TopBar.ZIndex = 7
+	TopBar.Parent = RightPane
+
+	local topLine = Instance.new("Frame")
+	topLine.BackgroundColor3 = Color3.fromRGB(32, 32, 38)
+	topLine.BorderSizePixel = 0
+	topLine.Position = UDim2.new(0, 0, 1, -1)
+	topLine.Size = UDim2.new(1, 0, 0, 1)
+	topLine.ZIndex = 8
+	topLine.Parent = TopBar
+
+	local SearchBox = Instance.new("TextBox")
+	SearchBox.Name = "SearchBox"
+	SearchBox.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+	SearchBox.Position = UDim2.new(0, 12, 0.5, -15)
+	SearchBox.Size = UDim2.new(1, -56, 0, 30)
+	SearchBox.Font = Enum.Font.Gotham
+	SearchBox.PlaceholderText = self.SearchPlaceholder
+	SearchBox.PlaceholderColor3 = Color3.fromRGB(120, 120, 130)
+	SearchBox.Text = ""
+	SearchBox.TextColor3 = Color3.fromRGB(235, 235, 242)
+	SearchBox.TextSize = 13
+	SearchBox.TextXAlignment = Enum.TextXAlignment.Center
+	SearchBox.ClearTextOnFocus = false
+	SearchBox.ZIndex = 8
+	SearchBox.Parent = TopBar
+	Corner(SearchBox, 6)
+	Stroke(SearchBox, Color3.fromRGB(48, 48, 56), 1, 0.15)
+
+	local SearchIcon = Instance.new("TextLabel")
+	SearchIcon.Name = "SearchIcon"
+	SearchIcon.BackgroundTransparency = 1
+	SearchIcon.Position = UDim2.new(0, 10, 0.5, -10)
+	SearchIcon.Size = UDim2.new(0, 20, 0, 20)
+	SearchIcon.Font = Enum.Font.GothamBold
+	SearchIcon.Text = "🔍"
+	SearchIcon.TextColor3 = Color3.fromRGB(145, 145, 155)
+	SearchIcon.TextSize = 13
+	SearchIcon.ZIndex = 9
+	SearchIcon.Parent = SearchBox
+
+	local DragBtn = Instance.new("TextButton")
+	DragBtn.Name = "DragBtn"
+	DragBtn.BackgroundTransparency = 1
+	DragBtn.Position = UDim2.new(1, -38, 0.5, -14)
+	DragBtn.Size = UDim2.new(0, 28, 0, 28)
+	DragBtn.Font = Enum.Font.GothamBold
+	DragBtn.Text = "✥"
+	DragBtn.TextColor3 = Color3.fromRGB(195, 195, 205)
+	DragBtn.TextSize = 16
+	DragBtn.ZIndex = 9
+	DragBtn.Parent = TopBar
+
+	local Pages = Instance.new("Frame")
+	Pages.Name = "Pages"
+	Pages.BackgroundTransparency = 1
+	Pages.Position = UDim2.new(0, 0, 0, 48)
+	Pages.Size = UDim2.new(1, 0, 1, -48)
+	Pages.ZIndex = 7
+	Pages.Parent = RightPane
+
+	-- Sürükle / Boyutlandır / Aç-Kapa / Kilitle
+	local dragging, dragStart, startPos
+	local resizing, resizeStart, startSize
+
+	local function beginDrag(input)
+		if self._locked then return end
+		dragging = true
+		dragStart = input.Position
+		startPos = Main.Position
+	end
+
+	DragBtn.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			beginDrag(input)
+		end
+	end)
+
+	Header.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			beginDrag(input)
+		end
+	end)
+
+	ResizeBtn.InputBegan:Connect(function(input)
+		if self._locked then return end
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			resizing = true
+			resizeStart = input.Position
+			startSize = Main.Size
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			if dragging and dragStart and startPos then
+				local delta = input.Position - dragStart
+				Main.Position = UDim2.new(
+					startPos.X.Scale,
+					startPos.X.Offset + delta.X,
+					startPos.Y.Scale,
+					startPos.Y.Offset + delta.Y
+				)
+			elseif resizing and resizeStart and startSize then
+				local delta = input.Position - resizeStart
+				local w = math.clamp(startSize.X.Offset + delta.X, self.MinSize.X, self.MaxSize.X)
+				local h = math.clamp(startSize.Y.Offset + delta.Y, self.MinSize.Y, self.MaxSize.Y)
+				Main.Size = UDim2.new(0, w, 0, h)
+			end
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+			resizing = false
+		end
+	end)
+
+	ToggleBtn.MouseButton1Click:Connect(function()
+		Main.Visible = not Main.Visible
+	end)
+
+	LockBtn.MouseButton1Click:Connect(function()
+		self._locked = not self._locked
+		LockBtn.TextColor3 = self._locked and Color3.fromRGB(255, 105, 105) or Color3.fromRGB(235, 235, 242)
+	end)
+
+	SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+		local q = string.lower(SearchBox.Text or "")
+		for _, item in ipairs(self._searchable) do
+			if q == "" then
+				item.Box.Visible = true
+			else
+				item.Box.Visible = string.find(string.lower(item.Text), q, 1, true) ~= nil
+			end
+		end
+	end)
+
+	function self:SetFooter(txt)
+		self.FooterText = tostring(txt or "")
+		FooterLabel.Text = self.FooterText
+	end
+
+	function self:Notify(opts)
+		opts = type(opts) == "table" and opts or { Title = tostring(opts), Description = "" }
+		task.spawn(function()
+			local holder = self.ScreenGui:FindFirstChild("Notifs")
+			if not holder then
+				holder = Instance.new("Frame")
+				holder.Name = "Notifs"
+				holder.BackgroundTransparency = 1
+				holder.Position = UDim2.new(1, -285, 1, -175)
+				holder.Size = UDim2.new(0, 270, 0, 155)
+				holder.ZIndex = 50
+				holder.Parent = self.ScreenGui
+
+				local lay = Instance.new("UIListLayout")
+				lay.Padding = UDim.new(0, 8)
+				lay.VerticalAlignment = Enum.VerticalAlignment.Bottom
+				lay.Parent = holder
+			end
+
+			local card = Instance.new("Frame")
+			card.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+			card.Size = UDim2.new(1, 0, 0, 56)
+			card.ZIndex = 51
+			card.Parent = holder
+			Corner(card, 6)
+			Stroke(card, Color3.fromRGB(70, 70, 80), 1, 0.2)
+
+			local t1 = Instance.new("TextLabel")
+			t1.BackgroundTransparency = 1
+			t1.Position = UDim2.new(0, 10, 0, 6)
+			t1.Size = UDim2.new(1, -20, 0, 18)
+			t1.Font = Enum.Font.GothamBold
+			t1.Text = tostring(opts.Title or self.Title)
+			t1.TextColor3 = Color3.fromRGB(240, 240, 248)
+			t1.TextSize = 13
+			t1.TextXAlignment = Enum.TextXAlignment.Left
+			t1.ZIndex = 52
+			t1.Parent = card
+
+			local t2 = Instance.new("TextLabel")
+			t2.BackgroundTransparency = 1
+			t2.Position = UDim2.new(0, 10, 0, 26)
+			t2.Size = UDim2.new(1, -20, 0, 22)
+			t2.Font = Enum.Font.Gotham
+			t2.Text = tostring(opts.Description or "")
+			t2.TextColor3 = Color3.fromRGB(175, 175, 185)
+			t2.TextSize = 11
+			t2.TextWrapped = true
+			t2.TextXAlignment = Enum.TextXAlignment.Left
+			t2.ZIndex = 52
+			t2.Parent = card
+
+			task.wait(opts.Time or 3.5)
+			pcall(function() card:Destroy() end)
+		end)
+	end
+
+	function self:Unload()
+		pcall(function() self.ScreenGui:Destroy() end)
+	end
+
+	function self:AddTab(name, icon)
+		local tab = { Name = name, Window = self }
+
+		local btn = Instance.new("TextButton")
+		btn.Name = name .. "_Tab"
+		btn.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+		btn.BackgroundTransparency = 1
+		btn.Size = UDim2.new(1, 0, 0, 34)
+		btn.Text = ""
+		btn.ZIndex = 8
+		btn.Parent = TabScroll
+		Corner(btn, 6)
+
+		local ico = Instance.new("TextLabel")
+		ico.BackgroundTransparency = 1
+		ico.Position = UDim2.new(0, 10, 0.5, -9)
+		ico.Size = UDim2.new(0, 18, 0, 18)
+		ico.Font = Enum.Font.GothamBold
+		ico.Text = ResolveIcon(icon)
+		ico.TextColor3 = Color3.fromRGB(165, 165, 175)
+		ico.TextSize = 13
+		ico.ZIndex = 9
+		ico.Parent = btn
+
+		local lbl = Instance.new("TextLabel")
+		lbl.BackgroundTransparency = 1
+		lbl.Position = UDim2.new(0, 34, 0, 0)
+		lbl.Size = UDim2.new(1, -40, 1, 0)
+		lbl.Font = Enum.Font.GothamMedium
+		lbl.Text = name
+		lbl.TextColor3 = Color3.fromRGB(165, 165, 175)
+		lbl.TextSize = 13
+		lbl.TextXAlignment = Enum.TextXAlignment.Left
+		lbl.ZIndex = 9
+		lbl.Parent = btn
+
+		local page = Instance.new("ScrollingFrame")
+		page.Name = name .. "_Page"
+		page.BackgroundTransparency = 1
+		page.BorderSizePixel = 0
+		page.Size = UDim2.new(1, 0, 1, 0)
+		page.ScrollBarThickness = 3
+		page.CanvasSize = UDim2.new(0, 0, 0, 0)
+		page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		page.Visible = false
+		page.ZIndex = 8
+		page.Parent = Pages
+		Pad(page, 12, 12, 12, 12)
+
+		local leftCol = Instance.new("Frame")
+		leftCol.Name = "LeftColumn"
+		leftCol.BackgroundTransparency = 1
+		leftCol.Position = UDim2.new(0, 0, 0, 0)
+		leftCol.Size = UDim2.new(0.5, -6, 0, 0)
+		leftCol.AutomaticSize = Enum.AutomaticSize.Y
+		leftCol.Parent = page
+		local lLay = Instance.new("UIListLayout")
+		lLay.Padding = UDim.new(0, 10)
+		lLay.SortOrder = Enum.SortOrder.LayoutOrder
+		lLay.Parent = leftCol
+
+		local rightCol = Instance.new("Frame")
+		rightCol.Name = "RightColumn"
+		rightCol.BackgroundTransparency = 1
+		rightCol.Position = UDim2.new(0.5, 6, 0, 0)
+		rightCol.Size = UDim2.new(0.5, -6, 0, 0)
+		rightCol.AutomaticSize = Enum.AutomaticSize.Y
+		rightCol.Parent = page
+		local rLay = Instance.new("UIListLayout")
+		rLay.Padding = UDim.new(0, 10)
+		rLay.SortOrder = Enum.SortOrder.LayoutOrder
+		rLay.Parent = rightCol
+
+		tab.Button = btn
+		tab.Page = page
+		tab.LeftColumn = leftCol
+		tab.RightColumn = rightCol
+
+		local function activate()
+			for _, t in ipairs(self.Tabs) do
+				t.Page.Visible = false
+				t.Button.BackgroundTransparency = 1
+				t.Button:FindFirstChildWhichIsA("TextLabel").TextColor3 = Color3.fromRGB(150, 150, 160)
+				for _, child in ipairs(t.Button:GetChildren()) do
+					if child:IsA("TextLabel") then
+						child.TextColor3 = Color3.fromRGB(150, 150, 160)
+					end
+				end
+			end
+			page.Visible = true
+			btn.BackgroundTransparency = 0
+			for _, child in ipairs(btn:GetChildren()) do
+				if child:IsA("TextLabel") then
+					child.TextColor3 = Color3.fromRGB(242, 242, 248)
+				end
+			end
+			self.ActiveTab = tab
+		end
+
+		btn.MouseButton1Click:Connect(activate)
+		table.insert(self.Tabs, tab)
+		if #self.Tabs == 1 then activate() end
+
+		local function makeGroupbox(col, title, gbIcon)
+			local box = Instance.new("Frame")
+			box.Name = tostring(title) .. "_Box"
+			box.BackgroundColor3 = Color3.fromRGB(17, 17, 21)
+			box.Size = UDim2.new(1, 0, 0, 0)
+			box.AutomaticSize = Enum.AutomaticSize.Y
+			box.Parent = col
+			Corner(box, 6)
+			Stroke(box, Color3.fromRGB(44, 44, 52), 1, 0.1)
+
+			local head = Instance.new("Frame")
+			head.BackgroundColor3 = Color3.fromRGB(21, 21, 26)
+			head.Size = UDim2.new(1, 0, 0, 32)
+			head.Parent = box
+			Corner(head, 6)
+
+			local hBorder = Instance.new("Frame")
+			hBorder.BackgroundColor3 = Color3.fromRGB(38, 38, 46)
+			hBorder.BorderSizePixel = 0
+			hBorder.Position = UDim2.new(0, 0, 1, -1)
+			hBorder.Size = UDim2.new(1, 0, 0, 1)
+			hBorder.Parent = head
+
+			local hTxt = Instance.new("TextLabel")
+			hTxt.BackgroundTransparency = 1
+			hTxt.Position = UDim2.new(0, 10, 0, 0)
+			hTxt.Size = UDim2.new(1, -20, 1, 0)
+			hTxt.Font = Enum.Font.GothamBold
+			hTxt.Text = (gbIcon and gbIcon ~= "" and (ResolveIcon(gbIcon) .. "  ") or "") .. tostring(title)
+			hTxt.TextColor3 = Color3.fromRGB(228, 228, 236)
+			hTxt.TextSize = 13
+			hTxt.TextXAlignment = Enum.TextXAlignment.Left
+			hTxt.Parent = head
+
+			local list = Instance.new("Frame")
+			list.BackgroundTransparency = 1
+			list.Position = UDim2.new(0, 0, 0, 34)
+			list.Size = UDim2.new(1, 0, 0, 0)
+			list.AutomaticSize = Enum.AutomaticSize.Y
+			list.Parent = box
+			Pad(list, 8, 10, 10, 10)
+
+			local lay = Instance.new("UIListLayout")
+			lay.Padding = UDim.new(0, 7)
+			lay.SortOrder = Enum.SortOrder.LayoutOrder
+			lay.Parent = list
+
+			local gb = {}
+
+			function gb:AddLabel(text, wrapped)
+				local row = Instance.new("Frame")
+				row.BackgroundTransparency = 1
+				row.Size = UDim2.new(1, 0, 0, wrapped and 34 or 20)
+				row.AutomaticSize = wrapped and Enum.AutomaticSize.Y or Enum.AutomaticSize.None
+				row.Parent = list
+
+				local l = Instance.new("TextLabel")
+				l.BackgroundTransparency = 1
+				l.Size = UDim2.new(1, 0, 0, wrapped and 34 or 20)
+				l.AutomaticSize = wrapped and Enum.AutomaticSize.Y or Enum.AutomaticSize.None
+				l.Font = Enum.Font.Gotham
+				l.Text = tostring(text)
+				l.TextColor3 = Color3.fromRGB(185, 185, 196)
+				l.TextSize = 12
+				l.TextWrapped = wrapped and true or false
+				l.TextXAlignment = Enum.TextXAlignment.Left
+				l.TextYAlignment = Enum.TextYAlignment.Top
+				l.Parent = row
+
+				table.insert(self._searchable, { Box = box, Text = tostring(text) })
+				return { SetText = function(_, t) l.Text = tostring(t) end }
+			end
+
+			function gb:AddDivider()
+				local d = Instance.new("Frame")
+				d.BackgroundColor3 = Color3.fromRGB(38, 38, 46)
+				d.BorderSizePixel = 0
+				d.Size = UDim2.new(1, 0, 0, 1)
+				d.Parent = list
+			end
+
+			function gb:AddButton(opts)
+				opts = opts or {}
+				local b = Instance.new("TextButton")
+				b.BackgroundColor3 = Color3.fromRGB(25, 25, 31)
+				b.Size = UDim2.new(1, 0, 0, 28)
+				b.Font = Enum.Font.GothamMedium
+				b.Text = tostring(opts.Text or "Button")
+				b.TextColor3 = Color3.fromRGB(232, 232, 240)
+				b.TextSize = 12
+				b.Parent = list
+				Corner(b, 5)
+				Stroke(b, Color3.fromRGB(52, 52, 62), 1, 0.2)
+
+				b.MouseButton1Click:Connect(function()
+					if opts.Func then pcall(opts.Func) end
+				end)
+				table.insert(self._searchable, { Box = box, Text = tostring(opts.Text or "") })
+				return b
+			end
+
+			function gb:AddToggle(id, opts)
+				opts = opts or {}
+				local state = { Value = opts.Default and true or false, _cbs = {} }
+
+				local row = Instance.new("TextButton")
+				row.BackgroundColor3 = Color3.fromRGB(21, 21, 26)
+				row.Size = UDim2.new(1, 0, 0, 28)
+				row.Text = ""
+				row.Parent = list
+				Corner(row, 5)
+
+				local tLbl = Instance.new("TextLabel")
+				tLbl.BackgroundTransparency = 1
+				tLbl.Position = UDim2.new(0, 8, 0, 0)
+				tLbl.Size = UDim2.new(1, -48, 1, 0)
+				tLbl.Font = Enum.Font.Gotham
+				tLbl.Text = tostring(opts.Text or id)
+				tLbl.TextColor3 = opts.Risky and Color3.fromRGB(255, 110, 110) or Color3.fromRGB(224, 224, 232)
+				tLbl.TextSize = 12
+				tLbl.TextXAlignment = Enum.TextXAlignment.Left
+				tLbl.Parent = row
+
+				local pill = Instance.new("Frame")
+				pill.Position = UDim2.new(1, -34, 0.5, -8)
+				pill.Size = UDim2.new(0, 26, 0, 16)
+				pill.Parent = row
+				Corner(pill, 8)
+
+				local dot = Instance.new("Frame")
+				dot.Size = UDim2.new(0, 12, 0, 12)
+				dot.Position = UDim2.new(0, 2, 0.5, -6)
+				dot.BackgroundColor3 = Color3.fromRGB(245, 245, 252)
+				dot.Parent = pill
+				Corner(dot, 6)
+
+				local function refresh()
+					if state.Value then
+						pill.BackgroundColor3 = Color3.fromRGB(70, 200, 120)
+						dot.Position = UDim2.new(1, -14, 0.5, -6)
+					else
+						pill.BackgroundColor3 = Color3.fromRGB(54, 54, 64)
+						dot.Position = UDim2.new(0, 2, 0.5, -6)
+					end
+				end
+
+				function state:SetValue(v)
+					state.Value = v and true or false
+					refresh()
+					for _, cb in ipairs(state._cbs) do pcall(cb, state.Value) end
+				end
+
+				function state:OnChanged(cb)
+					table.insert(state._cbs, cb)
+					if state.Value then pcall(cb, state.Value) end
+				end
+
+				function state:AddKeyPicker() return state end
+				function state:AddColorPicker() return state end
+
+				refresh()
+				row.MouseButton1Click:Connect(function() state:SetValue(not state.Value) end)
+
+				self.Toggles[id] = state
+				table.insert(self._searchable, { Box = box, Text = tostring(opts.Text or id) })
+				return state
+			end
+
+			function gb:AddSlider(id, opts)
+				opts = opts or {}
+				local minV = tonumber(opts.Min) or 0
+				local maxV = tonumber(opts.Max) or 100
+				local defV = tonumber(opts.Default) or minV
+				local state = { Value = math.clamp(defV, minV, maxV), _cbs = {} }
+
+				local wrap = Instance.new("Frame")
+				wrap.BackgroundColor3 = Color3.fromRGB(21, 21, 26)
+				wrap.Size = UDim2.new(1, 0, 0, 38)
+				wrap.Parent = list
+				Corner(wrap, 5)
+
+				local sLbl = Instance.new("TextLabel")
+				sLbl.BackgroundTransparency = 1
+				sLbl.Position = UDim2.new(0, 8, 0, 3)
+				sLbl.Size = UDim2.new(1, -16, 0, 16)
+				sLbl.Font = Enum.Font.Gotham
+				sLbl.Text = string.format("%s: %s", tostring(opts.Text or id), tostring(state.Value))
+				sLbl.TextColor3 = Color3.fromRGB(218, 218, 228)
+				sLbl.TextSize = 11
+				sLbl.TextXAlignment = Enum.TextXAlignment.Left
+				sLbl.Parent = wrap
+
+				local track = Instance.new("Frame")
+				track.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
+				track.Position = UDim2.new(0, 8, 0, 24)
+				track.Size = UDim2.new(1, -16, 0, 7)
+				track.Parent = wrap
+				Corner(track, 4)
+
+				local fill = Instance.new("Frame")
+				fill.BackgroundColor3 = Color3.fromRGB(115, 115, 225)
+				fill.Size = UDim2.new(0, 0, 1, 0)
+				fill.Parent = track
+				Corner(fill, 4)
+
+				local function setAlpha(a)
+					a = math.clamp(a, 0, 1)
+					local raw = minV + (maxV - minV) * a
+					local val = opts.Rounding == 1 and (math.floor(raw * 10 + 0.5) / 10) or math.floor(raw + 0.5)
+					state.Value = math.clamp(val, minV, maxV)
+					local ratio = (maxV == minV) and 0 or ((state.Value - minV) / (maxV - minV))
+					fill.Size = UDim2.new(math.clamp(ratio, 0, 1), 0, 1, 0)
+					sLbl.Text = string.format("%s: %s", tostring(opts.Text or id), tostring(state.Value))
+					for _, cb in ipairs(state._cbs) do pcall(cb, state.Value) end
+				end
+
+				setAlpha((maxV == minV) and 0 or ((state.Value - minV) / (maxV - minV)))
+
+				local sliding = false
+				track.InputBegan:Connect(function(input)
+					if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+						sliding = true
+						setAlpha((input.Position.X - track.AbsolutePosition.X) / math.max(1, track.AbsoluteSize.X))
+					end
+				end)
+				UserInputService.InputChanged:Connect(function(input)
+					if sliding and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+						setAlpha((input.Position.X - track.AbsolutePosition.X) / math.max(1, track.AbsoluteSize.X))
+					end
+				end)
+				UserInputService.InputEnded:Connect(function(input)
+					if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+						sliding = false
+					end
+				end)
+
+				function state:OnChanged(cb) table.insert(state._cbs, cb) end
+				self.Options[id] = state
+				table.insert(self._searchable, { Box = box, Text = tostring(opts.Text or id) })
+				return state
+			end
+
+			function gb:AddDropdown(id, opts)
+				opts = opts or {}
+				local vals = opts.Values or {}
+				local def = (type(opts.Default) == "string" and opts.Default) or vals[tonumber(opts.Default) or 1] or ""
+				local state = { Value = def, _cbs = {} }
+
+				local btn = Instance.new("TextButton")
+				btn.BackgroundColor3 = Color3.fromRGB(23, 23, 29)
+				btn.Size = UDim2.new(1, 0, 0, 28)
+				btn.Font = Enum.Font.GothamMedium
+				btn.Text = string.format("%s: %s", tostring(opts.Text or id), tostring(state.Value))
+				btn.TextColor3 = Color3.fromRGB(224, 224, 232)
+				btn.TextSize = 12
+				btn.Parent = list
+				Corner(btn, 5)
+
+				btn.MouseButton1Click:Connect(function()
+					if #vals == 0 then return end
+					local idx = 1
+					for i, v in ipairs(vals) do
+						if v == state.Value then idx = i break end
+					end
+					state.Value = vals[(idx % #vals) + 1]
+					btn.Text = string.format("%s: %s", tostring(opts.Text or id), tostring(state.Value))
+					for _, cb in ipairs(state._cbs) do pcall(cb, state.Value) end
+				end)
+
+				function state:OnChanged(cb) table.insert(state._cbs, cb) end
+				function state:SetValues(nv)
+					vals = nv or {}
+					if #vals > 0 and not table.find(vals, state.Value) then
+						state.Value = vals[1]
+						btn.Text = string.format("%s: %s", tostring(opts.Text or id), tostring(state.Value))
+					end
+				end
+
+				self.Options[id] = state
+				table.insert(self._searchable, { Box = box, Text = tostring(opts.Text or id) })
+				return state
+			end
+
+			function gb:AddInput(id, opts)
+				opts = opts or {}
+				local state = { Value = tostring(opts.Default or ""), _cbs = {} }
+
+				local tb = Instance.new("TextBox")
+				tb.BackgroundColor3 = Color3.fromRGB(23, 23, 29)
+				tb.Size = UDim2.new(1, 0, 0, 28)
+				tb.Font = Enum.Font.Gotham
+				tb.PlaceholderText = tostring(opts.Placeholder or opts.Text or id)
+				tb.PlaceholderColor3 = Color3.fromRGB(120, 120, 130)
+				tb.Text = state.Value
+				tb.TextColor3 = Color3.fromRGB(235, 235, 242)
+				tb.TextSize = 12
+				tb.ClearTextOnFocus = false
+				tb.Parent = list
+				Corner(tb, 5)
+				Stroke(tb, Color3.fromRGB(48, 48, 58), 1, 0.2)
+
+				tb:GetPropertyChangedSignal("Text"):Connect(function()
+					state.Value = tb.Text
+					for _, cb in ipairs(state._cbs) do pcall(cb, state.Value) end
+				end)
+
+				function state:OnChanged(cb) table.insert(state._cbs, cb) end
+				self.Options[id] = state
+				table.insert(self._searchable, { Box = box, Text = tostring(opts.Text or id) })
+				return state
+			end
+
+			function gb:AddKeybind(id, opts)
+				opts = opts or {}
+				local state = { Value = opts.Default or Enum.KeyCode.RightShift, _cbs = {} }
+
+				local btn = Instance.new("TextButton")
+				btn.BackgroundColor3 = Color3.fromRGB(23, 23, 29)
+				btn.Size = UDim2.new(1, 0, 0, 28)
+				btn.Font = Enum.Font.GothamMedium
+				btn.Text = string.format("%s: [%s]", tostring(opts.Text or id), tostring(state.Value.Name))
+				btn.TextColor3 = Color3.fromRGB(224, 224, 232)
+				btn.TextSize = 12
+				btn.Parent = list
+				Corner(btn, 5)
+
+				local listening = false
+				btn.MouseButton1Click:Connect(function()
+					listening = true
+					btn.Text = string.format("%s: [...]", tostring(opts.Text or id))
+				end)
+
+				UserInputService.InputBegan:Connect(function(input, gp)
+					if gp then return end
+					if listening and input.UserInputType == Enum.UserInputType.Keyboard then
+						listening = false
+						state.Value = input.KeyCode
+						btn.Text = string.format("%s: [%s]", tostring(opts.Text or id), tostring(state.Value.Name))
+					elseif not listening and input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == state.Value then
+						for _, cb in ipairs(state._cbs) do pcall(cb) end
+					end
+				end)
+
+				function state:OnClick(cb) table.insert(state._cbs, cb) end
+				self.Options[id] = state
+				table.insert(self._searchable, { Box = box, Text = tostring(opts.Text or id) })
+				return state
+			end
+
+			return gb
+		end
+
+		function tab:AddLeftGroupbox(title, iconStr) return makeGroupbox(leftCol, title, iconStr) end
+		function tab:AddRightGroupbox(title, iconStr) return makeGroupbox(rightCol, title, iconStr) end
+		function tab:AddLeftTabbox(title) return makeGroupbox(leftCol, title, "◈") end
+		function tab:AddRightTabbox(title) return makeGroupbox(rightCol, title, "◈") end
+
+		return tab
+	end
+
+	return self
+end
+
+getgenv().XenoLibrary = XenoLibrary
+return XenoLibrary
